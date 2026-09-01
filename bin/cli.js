@@ -2,7 +2,7 @@
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { startProxy } from '..index.js';
+import startProxy  from '..index.js';
 
 const argv = yargs(hideBin(process.argv))
   .scriptName('rebase')
