@@ -59,7 +59,8 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
 
 });
 
-  server.setRequestHandler("tools/call", async (req) => {
+
+ server.setRequestHandler("tools/call", async (req) => {
 
 
     const { name, arguments: agentArgs } = req.params;
@@ -70,19 +71,59 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
     const frozenSchema = getSchema(name);
 
     let finalArgs = agentArgs;
+    let translationSuccess=false
 
     //3. If we have both schemas, run translation in-flight
     if (frozenSchema && liveTool?.inputSchema) {
       console.log("translating ........")
-      finalArgs = translateToolArgs(agentArgs, frozenSchema, liveTool.inputSchema);
+      const [status,generatedArgs] = translateToolArgs(agentArgs, frozenSchema, liveTool.inputSchema);
+      if (status==true){
+        finalArgs=generatedArgs
+        translationSuccess=true
+      }
+    }
+
+    const schemasAreIdentical = JSON.stringify(frozenSchema) === JSON.stringify(liveTool.inputSchema);
+    if(!schemasAreIdentical && translationSuccess==false) {
+
+      throw new McpError(
+      ErrorCode.InvalidParams,
+      `SCHEMA_ERROR: Tool '${name}' parameter mismatch. Required schema: ${JSON.stringify(liveTool.inputSchema)}`
+    );
+  
+    /*
+      return {
+          "content": [
+            { 
+            "type": "text",
+            "text": `SCHEMA_ERROR: Invalid arguments for tool '${toolName}'. The schema has updated`
+            }
+        ],
+      "isError": true,
+      _meta: {
+        "mcp.error_code": "INVALID_TOOL_SCHEMA",
+        "tool_name": name,
+        "updated_input_schema": liveTool.inputSchema
+      }
+    }
+    */
+
     }
   
     return  await upstream.callTool({
       name: req.params.name,
       arguments: finalArgs
     })
+
+
   });
 
+
+
+
+
+
+  
   app.all("/mcp", async (req, res) => {
     const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
