@@ -18,7 +18,7 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
 
 
   const upstream = new Client({
-      name: "tripwire",
+      name: "rebase",
       version: "1.0.0",
     });
 
@@ -28,7 +28,7 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
     )
   );
 
-  const server = new Server({ name: "tripwire",version: "1.0.0",},
+  const server = new Server({ name: "rebase",version: "1.0.0",},
    {
     capabilities: {
       tools: {},
@@ -50,7 +50,7 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
   return {
       tools: liveToolsResponse.tools,
       _meta: {
-      tripwire: {
+      rebase: {
         status: "INIT",
         message: "INITIALIZATION",
     },
@@ -59,8 +59,7 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
 
 });
 
-
- server.setRequestHandler("tools/call", async (req) => {
+  server.setRequestHandler("tools/call", async (req) => {
 
 
     const { name, arguments: agentArgs } = req.params;
@@ -76,7 +75,11 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
     //3. If we have both schemas, run translation in-flight
     if (frozenSchema && liveTool?.inputSchema) {
       console.log("translating ........")
+      
+      
       const [status,generatedArgs] = translateToolArgs(agentArgs, frozenSchema, liveTool.inputSchema);
+      console.log(status)
+      console.log(generatedArgs)
       if (status==true){
         finalArgs=generatedArgs
         translationSuccess=true
@@ -90,23 +93,7 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
       ErrorCode.InvalidParams,
       `SCHEMA_ERROR: Tool '${name}' parameter mismatch. Required schema: ${JSON.stringify(liveTool.inputSchema)}`
     );
-  
-    /*
-      return {
-          "content": [
-            { 
-            "type": "text",
-            "text": `SCHEMA_ERROR: Invalid arguments for tool '${toolName}'. The schema has updated`
-            }
-        ],
-      "isError": true,
-      _meta: {
-        "mcp.error_code": "INVALID_TOOL_SCHEMA",
-        "tool_name": name,
-        "updated_input_schema": liveTool.inputSchema
-      }
-    }
-    */
+
 
     }
   
@@ -118,12 +105,6 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
 
   });
 
-
-
-
-
-
-  
   app.all("/mcp", async (req, res) => {
     const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
@@ -133,8 +114,8 @@ export default async function StartProxy({ targetUrl, port = 8080, dbPath = "sch
    await transport.handleRequest(req, res, req.body);
   });
 
- app.listen(3001, () => {
-   console.log("Tripwire: http://localhost:3001/mcp");
+ app.listen(port, () => {
+   console.log(`Rebase: running on port ${port} `);
  });
 
 
