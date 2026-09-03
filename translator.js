@@ -1,31 +1,38 @@
 
-export function translateToolArgs(agentArgs = {}, frozenSchema = {}, liveSchema = {}) {
-  const frozenProps = frozenSchema.properties || {};
-  const liveProps = liveSchema.properties || {};
+export function translateToolArgs(agentArgs = {}, liveSchema = {}) {
 
-  const frozenKeys = Object.keys(frozenProps);
+  try {
+
+  const liveProps = liveSchema.properties || {};
   const liveKeys = Object.keys(liveProps);
 
-  // Find keys removed from old schema and added to new schema
-  const removedKeys = frozenKeys.filter(key => !(key in liveProps));
-  const addedKeys = liveKeys.filter(key => !(key in frozenProps));
-
-  // Normalize helper: removes underscores and converts to lowercase
   const normalize = (key) => key.toLowerCase().replace(/_/g, '');
 
-  // Build mapping by matching normalized key names
-  const renameMap = {};
-  for (const oldKey of removedKeys) {
-    const match = addedKeys.find(newKey => normalize(oldKey) === normalize(newKey));
-    if (match) {
-      renameMap[oldKey] = match;
+  const normalizedLiveMap = {};
+    for (const liveKey of liveKeys) {
+      normalizedLiveMap[normalize(liveKey)] = liveKey;
     }
-  }
 
-  // Rewrite the agent's payload dictionary
-  return Object.entries(agentArgs).reduce((acc, [key, value]) => {
-    const targetKey = renameMap[key] || key;
-    acc[targetKey] = value;
-    return acc;
-  }, {});
+    const tresponse = Object.entries(agentArgs).reduce((acc, [key, value]) => {
+      // 1. If key exists as-is in live schema, keep it
+      if (key in liveProps) {
+        acc[key] = value;
+        return acc;
+      }
+
+      // 2. If normalized version matches a live schema key (e.g. userid -> userId), translate it
+      const normalizedKey = normalize(key);
+      const targetKey = normalizedLiveMap[normalizedKey] || key;
+
+      acc[targetKey] = value;
+      return acc;
+    }, {});
+
+    return [true, tresponse];
+  
+
+  }catch(e){
+    console.log(e);
+    return [false, null];
+  }
 }
