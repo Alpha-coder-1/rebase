@@ -5,19 +5,29 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import express from "express";
-import { LowPreset } from "lowdb/presets"; // Use built-in lowdb JSON preset
 import { translateToolArgs } from "./translator.js";
+import {JSONFilePreset} from 'lowdb/node';
+import * as path from "path";
+
+
 
 const app = express();
 app.use(express.json());
 
-// Initialize file-backed database with lowdb
-const db = await LowPreset("db.json", { frozenTools: {} });
+
+const dbPath= path.resolve("./db.json");
+const db = await JSONFilePreset(dbPath, {frozenTools:{}});
+  
+
+
 
 export default async function StartProxy({ targetUrl, port = 8080 }) {
 
+
+
+
   const upstream = new Client({
-    name: "wireape",
+    name: "Rebase",
     version: "1.0.0",
   });
 
@@ -28,7 +38,7 @@ export default async function StartProxy({ targetUrl, port = 8080 }) {
   );
 
   const server = new Server(
-    { name: "wireape", version: "1.0.0" },
+    { name: "rebase", version: "1.0.0" },
     {
       capabilities: {
         tools: {},
@@ -36,10 +46,15 @@ export default async function StartProxy({ targetUrl, port = 8080 }) {
     }
   );
 
+
+/*
+
   server.setRequestHandler("tools/list", async () => {
+
+
+
     const liveToolsResponse = await upstream.listTools();
-    
-    // Save/Update the frozen T1 context in the file-based DB
+  
     await db.read();
     for (const tool of liveToolsResponse.tools) {
       db.data.frozenTools[tool.name] = tool;
@@ -49,57 +64,92 @@ export default async function StartProxy({ targetUrl, port = 8080 }) {
     return {
       tools: liveToolsResponse.tools,
       _meta: {
-        wireape: {
+        rebase: {
           status: "READY",
           message: "PROXY_ACTIVE",
         },
       },
     };
   });
+*/
+
+
+
+server.setRequestHandler("tools/list", async () => {
+
+  const liveToolsResponse = await upstream.listTools();
+
+  await db.read();
+
+  for (const tool of liveToolsResponse.tools) {
+
+    // Freeze ONLY the first version
+    if (!db.data.frozenTools[tool.name]) {
+
+      db.data.frozenTools[tool.name] = structuredClone(tool);
+
+      console.log(
+        `[Rebase] Frozen initial schema for: ${tool.name}`
+      );
+    } else {
+
+      console.log(
+        `[Rebase] Existing frozen schema preserved for: ${tool.name}`
+      );
+    }
+  }
+
+  await db.write();
+
+  return {
+    tools: liveToolsResponse.tools,
+    _meta: {
+      rebase: {
+        status: "READY",
+        message: "PROXY_ACTIVE",
+      },
+    },
+  };
+});
+
+
+
 
   server.setRequestHandler("tools/call", async (req) => {
+
+
     const { name, arguments: agentArgs } = req.params;
     
-    // Fetch the latest live tools from upstream at T3
+    
     const upstreamToolsList = await upstream.listTools();
     const liveTool = upstreamToolsList.tools.find(t => t.name === name);
+
 
     if (!liveTool) {
       throw new Error(`TOOL_NOT_FOUND: Tool '${name}' does not exist on upstream server.`);
     }
 
-    // Retrieve the frozen T1 context from the database
+    
     await db.read();
     const frozenToolContext = db.data.frozenTools[name] || null;
 
     if (!frozenToolContext) {
-      console.warn(`[WireApe] No frozen context found in lowdb for tool: ${name}. Using live comparison fallback.`);
+      console.warn(`[rebase] No frozen context found in lowdb for tool: ${name}. Using live comparison fallback.`);
     }
 
-    let finalArgs = agentArgs;
+    
 
-    console.log(`[WireApe] Evaluating payload translation for tool: ${name}`);
+    console.log(`[Rebase] Evaluating payload translation for tool: ${name}`);
 
-    // Run dynamic translation passing the frozen context alongside live definition
-    const [status, generatedArgs] = translateToolArgs(
-      agentArgs,
-      frozenToolContext, // Frozen T1 context from lowdb passed here
-      liveTool           // Live tool definition
-    );
+    
+    const generatedCall = translateToolArgs( {name:name,arguments:agentArgs},frozenToolContext,liveTool);
+    return await upstream.callTool(generatedCall);
 
-    if (status === true && generatedArgs) {
-      finalArgs = generatedArgs;
-      console.log("[WireApe] Successfully translated payload:", finalArgs);
-    } else {
-      console.log("[WireApe] Dynamic translation skipped or matches original interface.");
-    }
 
-    // Execute upstream tool call with translated args
-    return await upstream.callTool({
-      name: req.params.name,
-      arguments: finalArgs,
-    });
   });
+
+
+
 
   app.all("/mcp", async (req, res) => {
     const transport = new NodeStreamableHTTPServerTransport({
@@ -111,6 +161,6 @@ export default async function StartProxy({ targetUrl, port = 8080 }) {
   });
 
   app.listen(port, () => {
-    console.log(`WireApe (rebase_x): Live proxy running on port ${port}`);
+    console.log(`rebase: Live proxy running on port ${port}`);
   });
 }
